@@ -1,9 +1,5 @@
 #include "opus_chunkdecoder.h"
 
-char* opus_chunkdecoder_version() {
-  return "opus chunkdecoder 1.2.4";
-}
-
 static int cb_read(OpusChunkDecoder *decoder, unsigned char *_ptr, int _nbytes) {
   // don't read from buffer if OggOpusFile not instantiated yet
   if (!decoder->of) return 0;
@@ -30,16 +26,16 @@ static int cb_read(OpusChunkDecoder *decoder, unsigned char *_ptr, int _nbytes) 
 
 /*
  * Feed opus audio data for decoding.  Calling program should enqueue and decode
- * immedately after enqueuing to reduce decoding latency and reduce size of
+ * immediately after enqueuing to reduce decoding latency and reduce size of
  * undecoded decoder->buffer data. Per https://xiph.org/ogg/doc/oggstream.html,
  * decoding would be possible by 64k.  Otherwise, you're feeding invalid Opus
- * data that is not recognized as a valid, decodable Ogg Opus File
+ * data that is not recognized as a valid, decodeable Ogg Opus File
  *
  * The undecoded 64k buffer won't overflow and this method succeeds if:
  *
  *   1) You enqueue bytes in sizes that are divisors of 64 (64, 32, 16, etc)
  *   2) You enqueue valid Opus audio data that can be decoded
- *   3) You decode data after enqueing it (thus removing it from undecoded buffer)
+ *   3) You decode data after enqueuing it (thus removing it from undecoded buffer)
  *
  * Returns 1 or 0 for success or error
  */
@@ -50,7 +46,7 @@ int opus_chunkdecoder_enqueue(OpusChunkDecoder *decoder, unsigned char *data, si
   // fprintf(stdout, "Undecoded: %zd\n", bufferUsed);
 
   if (bufferUsed + size > bufferMax) {
-    fprintf(stderr, "ERROR: Cannot enqueue %zd bytes, overflows by %zd. Used: "\
+    /*fprintf(stderr, "ERROR: Cannot enqueue %zd bytes, overflows by %zd. Used: "\
                     "%zd/%zd, OggOpusFile discovered: %s. " \
                     "Try reducing chunk or decode before enqueuing more\n",
       size,
@@ -58,7 +54,7 @@ int opus_chunkdecoder_enqueue(OpusChunkDecoder *decoder, unsigned char *data, si
       bufferUsed,
       bufferMax,
       (!decoder->of)? "false" : "true"
-    );
+    );*/
     return 0;
   }
 
@@ -83,7 +79,7 @@ int opus_chunkdecoder_enqueue(OpusChunkDecoder *decoder, unsigned char *data, si
     );
 
     if (err == 0) {
-      fprintf(stderr, "OggOpusFile discovered with %d bytes\n", decoder->buffer.num_unread);
+      //fprintf(stderr, "OggOpusFile discovered with %d bytes\n", decoder->buffer.num_unread);
 
       // OggOpusFile instantiated.  Reset unread buffer count
       decoder->buffer.num_unread = 0;
@@ -103,7 +99,7 @@ int opus_chunkdecoder_decode_float_stereo(OpusChunkDecoder *decoder, float *pcm_
   return op_read_float_stereo(decoder->of, pcm_out, pcm_out_size);
 }
 
-// returns total samples decoded.  convenience function for deinterlacing
+// returns total samples decoded.  convenience function for de-interlacing
 int opus_chunkdecoder_decode_float_stereo_deinterleaved(OpusChunkDecoder *decoder, float *pcm_out, int pcm_out_size, float *left, float *right) {
   int samples_decoded = opus_chunkdecoder_decode_float_stereo(decoder, pcm_out, pcm_out_size);
   opus_chunkdecoder_deinterleave(pcm_out, samples_decoded, left, right);

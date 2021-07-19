@@ -1,27 +1,34 @@
-`OpusStreamDecoder` is an Emscripten JavaScript WebAssembly (Wasm) library for immediately decoding Ogg Opus audio streams (URLs or files) in chunks without waiting for the complete file to download, copy, or read. [`libopusfile`](https://opus-codec.org/docs/opusfile_api-0.7/index.html) is the underlying C library used for decoding.  `OpusStreamDecoder` provides a lightweight JavaScript API for decoding Opus audio streams at near-native speeds.
+# Opus Decoder
 
-_Note: This repository was forked from [AnthumChris/fetch-stream-audio](https://github.com/AnthumChris/fetch-stream-audio) to decouple `OpusStreamDecoder` as a standalone Wasm decoder.  It will be integrated back into demo as a git submodule for [fetch-stream-audio #4](https://github.com/AnthumChris/fetch-stream-audio/issues/4)._
+`OpusDecoder` is an Emscripten JavaScript WebAssembly (Wasm) library for immediately decoding Ogg Opus audio streams (URLs or files) in chunks without waiting for the complete file to download, copy, or read. [`libopusfile`](https://opus-codec.org/docs/opusfile_api-0.7/index.html) is the underlying C library used for decoding. `OpusDecoder` provides a lightweight JavaScript API for decoding Opus audio streams at near-native speeds.
+
+## Attribution
+* `OpusDecoder` (this project) is based on [AnthumChris/opus-stream-decoder](https://github.com/AnthumChris/opus-stream-decoder). This fork has been optimized for size and for simple bundling in web applications:
+  * Everything is bundled in a single minified Javascript file for ease of use.
+  * WASM binary is encoded inline using yEnc binary encoding and compressed using DEFLATE to significantly reduce bundle size.
+  * WASM compiler options are tuned for best possible size and performance.
+* `tiny-inflate` is included from [foliojs/tiny-inflate](https://github.com/foliojs/tiny-inflate) and is used to decompress the WASM binary.
 
 # Usage
 
-Pre-compiled binaries and full examples are included in the `dist/` folder.  The `OpusStreamDecoder` API was designed to be simple and the pseudocode below explains its complete usage:
+Pre-compiled binaries and full examples are included in the `dist/` folder.  The `OpusDecoder` API was designed to be simple and the pseudocode below explains its complete usage:
 
-If using a front-end build system, you can obtain `OpusStreamDecoder` via `require` or `import` syntaxes:
+If using a front-end build system, you can obtain `OpusDecoder` via `require` or `import` syntaxes:
 
 ```js
-const { OpusStreamDecoder } = require('opus-stream-decoder');
-import { OpusStreamDecoder } from 'opus-stream-decoder';
+const { OpusDecoder } = require('opus-decoder');
+import { OpusDecoder } from 'opus-decoder';
 ```
 
-Otherwise, include the script bfore you instantiate `OpusStreamDecoder`.
+Otherwise, include the script before you instantiate `OpusDecoder`.
 
 ```javascript
-<script src="opus-stream-decoder.js"></script>
+<script src="opus-decoder.min.js"></script>
 <script>
   // instantiate with onDecode callback that fires when OggOpusFile data is decoded
-  const decoder = new OpusStreamDecoder({onDecode});
+  const decoder = new OpusDecoder({onDecode, onDecodeAll});
 
-  // Loop through your Opusdata callingdecode() multiple times. Pass a Uint8Array
+  // Loop through your Opus data calling decode() multiple times. Pass a Uint8Array
   try {
     while(...) {
       decoder.ready.then(_ => decoder.decode(UINT8_DATA_TO_DECODE));
@@ -41,17 +48,31 @@ Otherwise, include the script bfore you instantiate `OpusStreamDecoder`.
    * samplesDecoded > 0.  Mono Opus files would decoded identically into both
    * left/right channels and multichannel Opus files would be downmixed to 2 channels.
    */
-  function onDecode({left, right, samplesDecoded, sampleRate}) {
+
+  // Called for each decoded Opus frame
+  function onDecode ({channelData, samplesDecoded, sampleRate}) {
+    const left = channelData[0];
+    const right = channelData[1];
+    console.log(`Decoded ${samplesDecoded} samples`);
+    // play back the left/right audio, write to a file, etc
+  }
+
+  // Called when all data passed into decode has been processed
+  function onDecodeAll ({channelData, samplesDecoded, sampleRate}) {
+    const left = channelData[0];
+    const right = channelData[1];
     console.log(`Decoded ${samplesDecoded} samples`);
     // play back the left/right audio, write to a file, etc
   }
 </script>
 ```
 
-After instantiating `OpusStreamDecoder`, `decode()` should be called repeatedly until you're done reading the stream.  You __must__ start decoding from the beginning of the file.  Otherwise, a valid Ogg Opus file will not be discovered by `libopusfile` for decoding.  `decoder.ready` is a Promise that resolves once the underlying WebAssembly module is fetched from the network and instantiated, so ensure you always wait for it to resolve.  `free()` should be called when done decoding, when `decode()` throws an error, or if you wish to "reset" the decoder and begin decoding a new file with the same instance.  `free()` releases the allocated Wasm memory.
+After instantiating `OpusDecoder`, `decode()` should be called repeatedly until you're done reading the stream.  You __must__ start decoding from the beginning of the file.  Otherwise, a valid Ogg Opus file will not be discovered by `libopusfile` for decoding.  `decoder.ready` is a Promise that resolves once the underlying WebAssembly module is fetched from the network and instantiated, so ensure you always wait for it to resolve.  `free()` should be called when done decoding, when `decode()` throws an error, or if you wish to "reset" the decoder and begin decoding a new file with the same instance.  `free()` releases the allocated Wasm memory.
 
 #### Performance
-To achieve optimum decoding performance, `OpusStreamDecoder` should ideally be run in a Web Worker to keep CPU decoding computations on a sepearate browser thread. (_TODO: provide web worker example._)
+`OpusDecoder` is highly optimized and is sometimes faster than the native Opus decoding ability of the browser. To avoid any blocking operations on your main thread, you can run this in a Web Worker to keep CPU decoding computations on a separate browser thread.
+
+When decoding in batches where latency is not a concern, use the `onDecodeAll` callback which is called when all data that has been passed into `decode` has been decoded.
 
 Additionally, `onDecode` will be called thousands of times while decoding Opus files. Keep your `onDecode` callbacks lean.  The multiple calls result intentionally because of Opus' unmatched low-latency decoding advantage ([read more](https://opus-codec.org/comparison/#bitratelatency-comparison))—audio is decoded as soon as possible .  For example, a 60-second Opus file encoded with a 20ms frame/packet size would yield 3,000 `onDecode` calls (60 * 1000 / 20), because the underlying `libopusfile` C decoding function [`op_read_float_stereo()`](https://opus-codec.org/docs/opusfile_api-0.7/group__stream__decoding.html#ga9736f96563500c0978f56f0fd6bdad83) currently decodes one frame at a time during my tests.
 
@@ -68,21 +89,15 @@ _TODO: consider moving this to Makefile_
 
 ### Install Emscripten
 
-Emscripten is used to compile the C libraries to be compatible with WebAssembly.  This repo was tested with 1.39.5.
+Emscripten is used to compile the C libraries to be compatible with WebAssembly.  This repo was tested with 2.0.25.
 
 * [Emscripten Installation Instructions](https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html#installation-instructions)
 
 ### Run the Build
 
 ```
-$ make clean dist
+$ make clean && make -j8
 ```
-
-The Emscripten module builds in a few seconds, but most of the work will be spent configuring the dependencies `libopus`, `libogg`, and `libopusfile`. You may see the warnings (not errors) below, which don't prevent the build from succeeding.  It is not known whether these warnings adversly affect runtime use.
-
-- Don't have the functions lrint() and lrintf ()
-- Replacing these functions with a standard C cast
-- implicit conversion from 'unsigned int' to 'float'
 
 
 ### Build Errors
@@ -97,7 +112,7 @@ The Emscripten module builds in a few seconds, but most of the work will be spen
 
 # Tests & Examples
 
-Two tests exist that will decode an Ogg Opus File with `OpusStreamDecoder`.  Both tests output "decoded _N_ samples." on success.
+Two tests exist that will decode an Ogg Opus File with `OpusDecoder`.  Both tests output "decoded _N_ samples." on success.
 
 ### NodeJS Test
 
@@ -108,9 +123,9 @@ $ make test-wasm-module
 
 ### HTML Browser Test
 
-This test uses `fetch()` to decode a URL file stream in chunks.  Serve the `dist/` folder from a web server and open `test-opus-stream-decoder.html` in the browser.  HTTP/HTTPS schemes are required for Wasm to load—opening it directly with `file://` probably won't work.
+This test uses `fetch()` to decode a URL file stream in chunks.  Serve the `dist/` folder from a web server and open `test-opus-decoder.html` in the browser.  HTTP/HTTPS schemes are required for Wasm to load—opening it directly with `file://` probably won't work.
 
-You can also run `SimpleHTTPServer` and navigate to http://localhost:8000/test-opus-stream-decoder.html
+You can also run `SimpleHTTPServer` and navigate to http://localhost:8000/test-opus-decoder.html
 ```
 $ cd dist
 $ python -m SimpleHTTPServer 8000
