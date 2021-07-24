@@ -3,7 +3,7 @@ const path = require("path");
 const yenc = require("simple-yenc");
 const fflate = require("fflate");
 
-const distPath = path.join(__dirname, "dist", "opus-decoder.js");
+const distPath = process.argv[2];
 const tinyInflatePath = path.join(__dirname, "tiny-inflate.js");
 const opusDecoder = fs.readFileSync(distPath, { encoding: "ascii" });
 const tinyInflate = fs.readFileSync(tinyInflatePath, { encoding: "ascii" });
